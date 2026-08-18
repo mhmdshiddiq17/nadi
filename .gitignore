@@ -40,5 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-
-supabase*
+# supabase - generated runtime files (keep migrations, seed, tests in git)
+supabase/.temp/
+supabase/.branches/
