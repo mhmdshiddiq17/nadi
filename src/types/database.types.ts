@@ -227,6 +227,147 @@ export type Database = {
           },
         ]
       }
+      program_allocations: {
+        Row: {
+          allocation_id: string
+          allocation_method: string
+          allocation_weight: number
+          budget_amount: number
+          created_at: string
+          fetched_at: string
+          fiscal_year: number
+          metadata: Json
+          program_id: string
+          region_id: string
+          source_ref: string
+          source_system: string
+          updated_at: string
+        }
+        Insert: {
+          allocation_id?: string
+          allocation_method?: string
+          allocation_weight: number
+          budget_amount: number
+          created_at?: string
+          fetched_at: string
+          fiscal_year: number
+          metadata?: Json
+          program_id: string
+          region_id: string
+          source_ref: string
+          source_system: string
+          updated_at?: string
+        }
+        Update: {
+          allocation_id?: string
+          allocation_method?: string
+          allocation_weight?: number
+          budget_amount?: number
+          created_at?: string
+          fetched_at?: string
+          fiscal_year?: number
+          metadata?: Json
+          program_id?: string
+          region_id?: string
+          source_ref?: string
+          source_system?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_allocations_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["program_id"]
+          },
+          {
+            foreignKeyName: "program_allocations_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["region_id"]
+          },
+          {
+            foreignKeyName: "program_allocations_source_system_fkey"
+            columns: ["source_system"]
+            isOneToOne: false
+            referencedRelation: "integration_sources"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      program_realisation_snapshots: {
+        Row: {
+          allocation_id: string
+          created_at: string
+          cumulative_realised_value: number
+          fetched_at: string
+          metadata: Json
+          period_id: string
+          period_realised_value: number
+          snapshot_id: string
+          source_ref: string
+          source_system: string
+          updated_at: string
+        }
+        Insert: {
+          allocation_id: string
+          created_at?: string
+          cumulative_realised_value: number
+          fetched_at: string
+          metadata?: Json
+          period_id: string
+          period_realised_value: number
+          snapshot_id?: string
+          source_ref: string
+          source_system: string
+          updated_at?: string
+        }
+        Update: {
+          allocation_id?: string
+          created_at?: string
+          cumulative_realised_value?: number
+          fetched_at?: string
+          metadata?: Json
+          period_id?: string
+          period_realised_value?: number
+          snapshot_id?: string
+          source_ref?: string
+          source_system?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_realisation_snapshots_allocation_id_fkey"
+            columns: ["allocation_id"]
+            isOneToOne: false
+            referencedRelation: "program_allocations"
+            referencedColumns: ["allocation_id"]
+          },
+          {
+            foreignKeyName: "program_realisation_snapshots_allocation_id_fkey"
+            columns: ["allocation_id"]
+            isOneToOne: false
+            referencedRelation: "program_performance_monthly"
+            referencedColumns: ["allocation_id"]
+          },
+          {
+            foreignKeyName: "program_realisation_snapshots_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "periods"
+            referencedColumns: ["period_id"]
+          },
+          {
+            foreignKeyName: "program_realisation_snapshots_source_system_fkey"
+            columns: ["source_system"]
+            isOneToOne: false
+            referencedRelation: "integration_sources"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       programs: {
         Row: {
           active_from: string | null
@@ -365,7 +506,148 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      portfolio_year_summary: {
+        Row: {
+          achievement_pct: number | null
+          budget_amount: number | null
+          fiscal_year: number | null
+          gap_value: number | null
+          program_count: number | null
+          realised_value: number | null
+        }
+        Relationships: []
+      }
+      program_performance_monthly: {
+        Row: {
+          achievement_pct: number | null
+          allocation_id: string | null
+          allocation_method: string | null
+          allocation_source_ref: string | null
+          allocation_source_system: string | null
+          allocation_weight: number | null
+          budget_amount: number | null
+          cumulative_realised_value: number | null
+          fiscal_year: number | null
+          gap_value: number | null
+          month: number | null
+          period_code: string | null
+          period_id: string | null
+          period_label: string | null
+          period_realised_value: number | null
+          program_code: string | null
+          program_id: string | null
+          program_name: string | null
+          realisation_fetched_at: string | null
+          realisation_source_ref: string | null
+          realisation_source_system: string | null
+          region_code: string | null
+          region_id: string | null
+          region_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_allocations_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["program_id"]
+          },
+          {
+            foreignKeyName: "program_allocations_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["region_id"]
+          },
+          {
+            foreignKeyName: "program_allocations_source_system_fkey"
+            columns: ["allocation_source_system"]
+            isOneToOne: false
+            referencedRelation: "integration_sources"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "program_realisation_snapshots_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "periods"
+            referencedColumns: ["period_id"]
+          },
+          {
+            foreignKeyName: "program_realisation_snapshots_source_system_fkey"
+            columns: ["realisation_source_system"]
+            isOneToOne: false
+            referencedRelation: "integration_sources"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      program_period_summary: {
+        Row: {
+          achievement_pct: number | null
+          budget_amount: number | null
+          cumulative_realised_value: number | null
+          fiscal_year: number | null
+          gap_value: number | null
+          month: number | null
+          period_code: string | null
+          period_id: string | null
+          period_label: string | null
+          period_realised_value: number | null
+          program_code: string | null
+          program_id: string | null
+          program_name: string | null
+          province_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_allocations_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["program_id"]
+          },
+          {
+            foreignKeyName: "program_realisation_snapshots_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "periods"
+            referencedColumns: ["period_id"]
+          },
+        ]
+      }
+      program_year_summary: {
+        Row: {
+          achievement_pct: number | null
+          budget_amount: number | null
+          fiscal_year: number | null
+          gap_value: number | null
+          latest_period_code: string | null
+          latest_period_id: string | null
+          latest_period_label: string | null
+          program_code: string | null
+          program_id: string | null
+          program_name: string | null
+          province_count: number | null
+          realised_value: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_allocations_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["program_id"]
+          },
+          {
+            foreignKeyName: "program_realisation_snapshots_period_id_fkey"
+            columns: ["latest_period_id"]
+            isOneToOne: false
+            referencedRelation: "periods"
+            referencedColumns: ["period_id"]
+          },
+        ]
+      }
     }
     Functions: {
       [_ in never]: never

@@ -654,3 +654,675 @@ do update set
   name = excluded.name,
   agency_id = excluded.agency_id,
   adapter_key = excluded.adapter_key;
+
+
+-- ============================================================
+-- SPRINT 3
+-- DUMMY FINANCIAL DATA
+-- ============================================================
+
+-- ============================================================
+-- ANNUAL ALLOCATION
+--
+-- Target:
+-- Rp10.000.000.000 per program
+-- 38 provinces
+-- deterministic weighted allocation
+-- ============================================================
+
+with program_seed as (
+
+  select
+    p.program_id,
+    p.code as program_code,
+
+    row_number()
+      over (
+        order by p.code
+      )::integer
+      as seed_no
+
+  from public.programs p
+
+  where p.is_active = true
+),
+
+province_scores as (
+
+  select
+    ps.program_id,
+    ps.program_code,
+    ps.seed_no,
+
+    r.region_id,
+    r.code as region_code,
+    r.sort_order,
+
+    (
+      50
+      +
+      mod(
+        r.sort_order * 37,
+        51
+      )
+    )::numeric
+      as population_index,
+
+    (
+      40
+      +
+      mod(
+        (
+          r.sort_order
+          +
+          ps.seed_no
+        ) * 29,
+        61
+      )
+    )::numeric
+      as need_index,
+
+    (
+      45
+      +
+      mod(
+        (
+          (
+            r.sort_order
+            *
+            ps.seed_no
+          )
+          +
+          7
+        ) * 17,
+        56
+      )
+    )::numeric
+      as distribution_index
+
+  from program_seed ps
+
+  cross join public.regions r
+
+  where
+    r.region_type = 'PROVINCE'
+    and
+    r.is_active = true
+),
+
+weighted_scores as (
+
+  select
+    *,
+
+    (
+      population_index * 0.50
+      +
+      need_index * 0.30
+      +
+      distribution_index * 0.20
+    )::numeric
+      as raw_score
+
+  from province_scores
+),
+
+normalized as (
+
+  select
+    *,
+
+    (
+      raw_score
+      /
+      sum(raw_score)
+        over (
+          partition by program_id
+        )
+    ) as raw_weight,
+
+    (
+      10000000000::numeric
+      *
+      raw_score
+      /
+      sum(raw_score)
+        over (
+          partition by program_id
+        )
+    ) as raw_budget
+
+  from weighted_scores
+),
+
+rounded as (
+
+  select
+    *,
+
+    floor(
+      raw_budget
+    )::numeric
+      as base_budget,
+
+    (
+      raw_budget
+      -
+      floor(raw_budget)
+    ) as remainder_fraction
+
+  from normalized
+),
+
+ranked as (
+
+  select
+    *,
+
+    row_number()
+      over (
+        partition by program_id
+        order by
+          remainder_fraction desc,
+          region_code
+      )
+      as remainder_rank,
+
+    sum(base_budget)
+      over (
+        partition by program_id
+      )
+      as base_total
+
+  from rounded
+),
+
+final_allocations as (
+
+  select
+    *,
+
+    (
+      base_budget
+      +
+      case
+        when remainder_rank = 1
+        then
+          (
+            10000000000::numeric
+            -
+            base_total
+          )
+        else 0
+      end
+    )::numeric(18,2)
+      as final_budget
+
+  from ranked
+)
+
+insert into public.program_allocations (
+  program_id,
+  region_id,
+
+  fiscal_year,
+
+  budget_amount,
+  allocation_weight,
+
+  allocation_method,
+
+  source_system,
+  source_ref,
+
+  fetched_at,
+
+  metadata
+)
+
+select
+  program_id,
+  region_id,
+
+  2026,
+
+  final_budget,
+
+  (
+    final_budget
+    /
+    10000000000::numeric
+  )::numeric(12,10),
+
+  'SYNTHETIC_WEIGHTED_V1',
+
+  case program_code
+
+    when 'SPHP'
+      then 'KLIKSPHP'
+
+    when 'LPG3'
+      then 'MAP_SUBSIDI_TEPAT'
+
+    when 'PUPUK'
+      then 'IPUBERS'
+
+    when 'MGR'
+      then 'SIMIRAH2'
+
+    when 'BPB'
+      then 'KLIKSPHP'
+
+    when 'BPNT'
+      then 'SIKS_NG'
+
+    when 'ALSIN'
+      then 'APN_INTERNAL'
+
+  end,
+
+  concat(
+    'MOCK-ALLOC-',
+    program_code,
+    '-',
+    region_code,
+    '-2026'
+  ),
+
+  '2026-08-18 00:00:00+07'::timestamptz,
+
+  jsonb_build_object(
+    'synthetic', true,
+    'generator', 'NADI_DUMMY_V1',
+    'population_index', population_index,
+    'need_index', need_index,
+    'distribution_index', distribution_index,
+    'weight_model',
+      jsonb_build_object(
+        'population', 0.50,
+        'need', 0.30,
+        'distribution', 0.20
+      )
+  )
+
+from final_allocations
+
+on conflict (
+  program_id,
+  region_id,
+  fiscal_year
+)
+
+do update set
+
+  budget_amount =
+    excluded.budget_amount,
+
+  allocation_weight =
+    excluded.allocation_weight,
+
+  allocation_method =
+    excluded.allocation_method,
+
+  source_system =
+    excluded.source_system,
+
+  source_ref =
+    excluded.source_ref,
+
+  fetched_at =
+    excluded.fetched_at,
+
+  metadata =
+    excluded.metadata;
+
+-- ============================================================
+-- REALISATION TARGET BY PROVINCE
+-- ============================================================
+
+with program_seed as (
+
+  select
+    p.program_id,
+    p.code as program_code,
+
+    row_number()
+      over (
+        order by p.code
+      )::integer
+      as seed_no
+
+  from public.programs p
+
+  where p.is_active = true
+),
+
+allocation_performance as (
+
+  select
+    a.allocation_id,
+    a.program_id,
+    a.region_id,
+
+    a.budget_amount,
+
+    a.source_system,
+
+    ps.program_code,
+    ps.seed_no,
+
+    r.code as region_code,
+    r.sort_order,
+
+    (
+      0.35
+      +
+      (
+        mod(
+          (
+            r.sort_order * 13
+            +
+            ps.seed_no * 7
+          ),
+          41
+        )::numeric
+        /
+        100
+      )
+    ) as performance_factor
+
+  from public.program_allocations a
+
+  join program_seed ps
+    on ps.program_id =
+       a.program_id
+
+  join public.regions r
+    on r.region_id =
+       a.region_id
+
+  where
+    a.fiscal_year = 2026
+),
+
+raw_realisation as (
+
+  select
+    *,
+
+    (
+      budget_amount
+      *
+      performance_factor
+    ) as raw_realisation
+
+  from allocation_performance
+),
+
+normalized as (
+
+  select
+    *,
+
+    (
+      5000000000::numeric
+      *
+      raw_realisation
+      /
+      sum(raw_realisation)
+        over (
+          partition by program_id
+        )
+    ) as normalized_realisation
+
+  from raw_realisation
+),
+
+rounded as (
+
+  select
+    *,
+
+    floor(
+      normalized_realisation
+    )::numeric
+      as base_realisation,
+
+    (
+      normalized_realisation
+      -
+      floor(normalized_realisation)
+    ) as remainder_fraction
+
+  from normalized
+),
+
+ranked as (
+
+  select
+    *,
+
+    row_number()
+      over (
+        partition by program_id
+
+        order by
+          remainder_fraction desc,
+          region_code
+      )
+      as remainder_rank,
+
+    sum(base_realisation)
+      over (
+        partition by program_id
+      )
+      as base_total
+
+  from rounded
+),
+
+final_realisation as (
+
+  select
+    *,
+
+    (
+      base_realisation
+      +
+      case
+
+        when remainder_rank = 1
+
+        then
+          (
+            5000000000::numeric
+            -
+            base_total
+          )
+
+        else 0
+
+      end
+    )::numeric(18,2)
+      as final_realised_value
+
+  from ranked
+),
+
+monthly_curve (
+  month,
+  cumulative_ratio
+) as (
+
+  values
+    (1,  0.04::numeric),
+    (2,  0.09::numeric),
+    (3,  0.15::numeric),
+    (4,  0.22::numeric),
+    (5,  0.30::numeric),
+    (6,  0.39::numeric),
+    (7,  0.49::numeric),
+    (8,  0.60::numeric),
+    (9,  0.70::numeric),
+    (10, 0.80::numeric),
+    (11, 0.90::numeric),
+    (12, 1.00::numeric)
+),
+
+cumulative_rows as (
+
+  select
+    fr.*,
+
+    pr.period_id,
+    pr.code as period_code,
+    pr.month,
+    pr.ends_on,
+
+    mc.cumulative_ratio,
+
+    case
+
+      when pr.month = 12
+      then
+        fr.final_realised_value
+
+      else
+        floor(
+          fr.final_realised_value
+          *
+          mc.cumulative_ratio
+        )::numeric(18,2)
+
+    end as cumulative_value
+
+  from final_realisation fr
+
+  cross join monthly_curve mc
+
+  join public.periods pr
+    on
+      pr.fiscal_year = 2026
+      and
+      pr.period_type = 'MONTHLY'
+      and
+      pr.month = mc.month
+),
+
+monthly_rows as (
+
+  select
+    *,
+
+    (
+      cumulative_value
+      -
+      lag(
+        cumulative_value,
+        1,
+        0::numeric
+      )
+      over (
+        partition by allocation_id
+        order by month
+      )
+    )::numeric(18,2)
+      as period_value
+
+  from cumulative_rows
+)
+
+insert into
+public.program_realisation_snapshots (
+
+  allocation_id,
+
+  period_id,
+
+  period_realised_value,
+
+  cumulative_realised_value,
+
+  source_system,
+
+  source_ref,
+
+  fetched_at,
+
+  metadata
+)
+
+select
+
+  allocation_id,
+
+  period_id,
+
+  period_value,
+
+  cumulative_value,
+
+  source_system,
+
+  concat(
+    'MOCK-REAL-',
+    program_code,
+    '-',
+    region_code,
+    '-',
+    period_code
+  ),
+
+  (
+    (
+      ends_on::timestamp
+      +
+      interval '1 day'
+    )
+    at time zone 'Asia/Jakarta'
+  ),
+
+  jsonb_build_object(
+
+    'synthetic', true,
+
+    'generator',
+      'NADI_DUMMY_V1',
+
+    'performance_factor',
+      performance_factor,
+
+    'final_realised_value',
+      final_realised_value,
+
+    'cumulative_ratio',
+      cumulative_ratio
+
+  )
+
+from monthly_rows
+
+on conflict (
+  allocation_id,
+  period_id
+)
+
+do update set
+
+  period_realised_value =
+    excluded.period_realised_value,
+
+  cumulative_realised_value =
+    excluded.cumulative_realised_value,
+
+  source_system =
+    excluded.source_system,
+
+  source_ref =
+    excluded.source_ref,
+
+  fetched_at =
+    excluded.fetched_at,
+
+  metadata =
+    excluded.metadata;

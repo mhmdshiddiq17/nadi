@@ -21,3 +21,6 @@ join auth.users u
 
 join public.roles r
   on r.role_id = p.role_id;
+
+select count(*)
+from public.program_allocations;
